@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slepá mapa - Ukrajina, Pobaltí a okolí</title>
+    
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+    <style>
+        body { font-family: 'Segoe UI', sans-serif; background: #f0f2f5; display: flex; justify-content: center; padding: 20px; margin: 0; }
+        #app-container { background: white; border-radius: 12px; box-shadow: 0 8px 30px rgba(0,0,0,0.15); max-width: 900px; width: 100%; overflow: hidden; display: flex; flex-direction: column; }
+        
+        /* Oblast pro mapu - světle modré pozadí pro moře, pokud by se mapa nenačetla hned */
+        #map { height: 480px; width: 100%; background: #e6eef5; z-index: 1; }
+        
+        /* Vlastní CSS pro šipku */
+        .arrow-icon {
+            width: 0; height: 0;
+            border-left: 14px solid transparent;
+            border-right: 14px solid transparent;
+            border-top: 28px solid #ff4757; /* Červená šipka dolů */
+            filter: drop-shadow(0px 3px 4px rgba(0,0,0,0.5));
+            position: relative;
+            top: -28px; /* Posun, aby špička ukazovala přesně na daný bod */
+            left: -14px;
+        }
+
+        /* UI panel pod mapou */
+        #ui-panel { padding: 30px; text-align: center; }
+        h1 { margin-top: 0; color: #2f3542; font-size: 1.8rem; }
+        #question-text { font-size: 1.4rem; font-weight: 600; margin-bottom: 25px; color: #2f3542; min-height: 33px; }
+        
+        .grid-options { display: grid; grid-template-columns: repeat(2, 1fr); gap: 15px; max-width: 700px; margin: 0 auto; }
+        button { padding: 15px; font-size: 1.1rem; font-weight: 600; cursor: pointer; border: 2px solid #1e90ff; background: white; border-radius: 8px; transition: all 0.2s; color: #1e90ff; }
+        button:hover:not(:disabled) { background: #1e90ff; color: white; transform: translateY(-2px); }
+        button:disabled { cursor: default; opacity: 0.9; }
+        
+        button.correct { background: #2ed573 !important; color: white !important; border-color: #26af5a !important; }
+        button.wrong { background: #ff4757 !important; color: white !important; border-color: #d63031 !important; }
+        
+        #stats { margin-top: 25px; font-size: 1.2rem; color: #57606f; font-weight: bold; }
+        .btn-start { background: #2f3542; color: white; border: none; padding: 12px 35px; font-size: 1.2rem; margin-top: 20px; }
+        .btn-start:hover { background: #1e272e; color: white; }
+    </style>
+</head>
+<body>
+
+    <div id="app-container">
+        <div id="map"></div>
+
+        <div id="ui-panel">
+            <h1>Evropa: Státy a moře</h1>
+            <div id="question-text">Připraveni?</div>
+            <div id="options" class="grid-options"></div>
+            
+            <button id="start-btn" class="btn-start" onclick="initQuiz()">Spustit kvíz</button>
+            <div id="stats" style="display: none;">Úspěšnost: <span id="pts">0</span> / <span id="total">0</span></div>
+        </div>
+    </div>
+
+    <script>
+        // Inicializace mapy (střed posunut mírně na severozápad kvůli Pobaltí a ČR)
+        const map = L.map('map', {
+            center: [50.5, 26.0], 
+            zoom: 4.5, // Oddáleno pro zobrazení širšího regionu
+            zoomSnap: 0.5, // Povoluje "půlkové" přiblížení
+            scrollWheelZoom: false // Vypnuto zoomování kolečkem proti nechtěnému posunu stránky
+        });
+
+        // Přidání "slepé" mapy s důrazem na čisté státní hranice (CartoDB Positron No Labels)
+        L.tileLayer('https://{s}.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}{r}.png', {
+            attribution: '&copy; OpenStreetMap &copy; CARTO',
+            maxZoom: 8,
+            minZoom: 4
+        }).addTo(map);
+
+        // Skutečné GPS souřadnice [Zeměpisná šířka, Zeměpisná délka]
+        const data = [
+            { name: 'Ukrajina', lat: 48.5, lng: 31.2 },
+            { name: 'Polsko', lat: 52.0, lng: 19.5 },
+            { name: 'Slovensko', lat: 48.8, lng: 19.5 },
+            { name: 'Maďarsko', lat: 47.0, lng: 19.5 },
+            { name: 'Rumunsko', lat: 46.0, lng: 25.0 },
+            { name: 'Moldavsko', lat: 47.2, lng: 28.6 },
+            { name: 'Bělorusko', lat: 53.5, lng: 28.0 },
+            { name: 'Rusko', lat: 52.0, lng: 39.0 },
+            { name: 'Turecko', lat: 41.5, lng: 35.0 },
+            { name: 'Černé moře', lat: 43.5, lng: 34.0 },
+            { name: 'Azovské moře', lat: 46.0, lng: 36.5 },
+            { name: 'Krym', lat: 45.3, lng: 34.2 },
+            // Nově přidané oblasti
+            { name: 'Česko', lat: 49.8, lng: 15.5 },
+            { name: 'Litva', lat: 55.3, lng: 23.9 },
+            { name: 'Lotyšsko', lat: 56.8, lng: 24.6 },
+            { name: 'Estonsko', lat: 58.6, lng: 25.5 },
+            { name: 'Baltské moře', lat: 56.5, lng: 18.5 }
+        ];
+
+        // Nastavení naší grafické šipky
+        const arrowIcon = L.divIcon({
+            className: 'custom-arrow',
+            html: "<div class='arrow-icon'></div>",
+            iconSize: [0, 0] // Řešeno přes CSS
+        });
+
+        let currentItem;
+        let points = 0;
+        let attempts = 0;
+        let available = [];
+        let marker = null;
+
+        function initQuiz() {
+            points = 0;
+            attempts = 0;
+            available = [...data];
+            
+            document.getElementById('start-btn').style.display = 'none';
+            document.getElementById('stats').style.display = 'block';
+            updateStats();
+            
+            // Vycentrujeme mapu do výchozí pozice pro novou hru
+            map.setView([50.5, 26.0], 4.5);
+            nextRound();
+        }
+
+        function updateStats() {
+            document.getElementById('pts').innerText = points;
+            document.getElementById('total').innerText = attempts;
+        }
+
+        function nextRound() {
+            if (available.length === 0) {
+                document.getElementById('question-text').innerText = "Kvíz dokončen! Skvělý výkon.";
+                document.getElementById('options').innerHTML = "";
+                document.getElementById('start-btn').innerText = "Hrát znovu";
+                document.getElementById('start-btn').style.display = 'inline-block';
+                if (marker) map.removeLayer(marker);
+                marker = null;
+                return;
+            }
+
+            // Vybrat náhodnou otázku
+            const idx = Math.floor(Math.random() * available.length);
+            currentItem = available.splice(idx, 1)[0];
+
+            // Posunout šipku na přesné GPS souřadnice
+            if (!marker) {
+                marker = L.marker([currentItem.lat, currentItem.lng], {icon: arrowIcon}).addTo(map);
+            } else {
+                marker.setLatLng([currentItem.lat, currentItem.lng]);
+            }
+
+            document.getElementById('question-text').innerText = "Kam ukazuje šipka?";
+            generateButtons();
+        }
+
+        function generateButtons() {
+            const container = document.getElementById('options');
+            container.innerHTML = "";
+            
+            let pool = [currentItem.name];
+            let suspects = data.filter(d => d.name !== currentItem.name);
+            suspects.sort(() => 0.5 - Math.random());
+            
+            for(let i=0; i<3; i++) {
+                pool.push(suspects[i].name);
+            }
+            
+            pool.sort(() => 0.5 - Math.random());
+
+            pool.forEach(text => {
+                const b = document.createElement('button');
+                b.innerText = text;
+                b.onclick = () => verify(text, b);
+                container.appendChild(b);
+            });
+        }
+
+        function verify(selected, btn) {
+            const all = document.querySelectorAll('.grid-options button');
+            all.forEach(b => b.disabled = true);
+            
+            attempts++;
+            if (selected === currentItem.name) {
+                btn.classList.add('correct');
+                points++;
+            } else {
+                btn.classList.add('wrong');
+                all.forEach(b => {
+                    if (b.innerText === currentItem.name) b.classList.add('correct');
+                });
+            }
+
+            updateStats();
+            setTimeout(nextRound, 2000);
+        }
+    </script>
+</body>
+</html>
