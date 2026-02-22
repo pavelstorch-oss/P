@@ -1,0 +1,14 @@
+body {
+  font-family: Arial, sans-serif;
+  margin: 0;
+  text-align: center;
+}
+
+#map {
+  height: 80vh;
+}
+
+#panel {
+  padding: 10px;
+  background: #f4f4f4;
+}
